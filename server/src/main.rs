@@ -1,9 +1,17 @@
-use std::sync::Arc;
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use axum::{routing::get, Router};
-use serialport::{DataBits, SerialPortInfo, SerialPortType, UsbPortInfo};
-use tokio::sync::Mutex;
+use crc::{Crc, CRC_16_MODBUS};
+use serialport::{
+    DataBits, Parity, SerialPort, SerialPortInfo, SerialPortType, StopBits, UsbPortInfo,
+};
 use tower_http::services::{ServeDir, ServeFile};
+
+const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_MODBUS);
+mod registers;
 
 fn is_usb_serial_adapter(port: &SerialPortInfo) -> bool {
     match port {
@@ -24,25 +32,80 @@ fn is_usb_serial_adapter(port: &SerialPortInfo) -> bool {
 }
 
 const PORT_NAME: &str = "/dev/cu.usbserial-150";
+const BAUD_RATE: u32 = 9_600;
+const FAN_ADDRESS: u8 = 0x02;
+
+mod function_codes {
+    pub const READ_INPUT_REGISTERS: u8 = 0x04;
+}
+
+fn get_current_set_point(port: &mut Box<dyn SerialPort>) -> Result<u16, serialport::Error> {
+    // Build the message
+    let mut message = [0x00u8; 8];
+
+    // Device address
+    message[0] = FAN_ADDRESS;
+
+    // Function code
+    message[1] = function_codes::READ_INPUT_REGISTERS;
+
+    // Address
+    let address = registers::input_registers::CURRENT_SET_POINT
+        .address
+        .to_be_bytes();
+    message[2] = address[0];
+    message[3] = address[1];
+
+    // Number of registers
+    // message[4] = 0x00;
+    message[5] = 0x01;
+
+    // Checksum
+    let checksum: [u8; 2] = CRC.checksum(&message[..6]).to_be_bytes();
+    // They come out reversed...
+    message[6] = checksum[1];
+    message[7] = checksum[0];
+
+    // Send the message
+    port.write_all(&message)?;
+
+    // Read the response
+    // Address 1 + Function code 1 + Byte count 1 + data n + 2 bytes of CRC
+    const RESPONSE_LENGTH: usize =
+        5 + registers::input_registers::CURRENT_SET_POINT.length as usize;
+    let response_buffer = &mut [0u8; RESPONSE_LENGTH];
+    port.read_exact(response_buffer)?;
+    //TODO validate the response
+
+    // Extract the value
+    let value = u16::from_be_bytes([response_buffer[3], response_buffer[4]]);
+    Ok(value)
+}
+
 #[derive(Clone)]
 struct AppState {
-    port: Arc<Mutex<SerialPortInfo>>,
-    speed: Arc<Mutex<u32>>,
+    port: Arc<Mutex<Box<dyn SerialPort>>>,
+    /// The speed of the motor in RPM
+    /// None if no value has been read yet
+    speed: Arc<Mutex<Option<u32>>>,
+}
+
+fn open_serial_port() -> serialport::Result<Box<dyn SerialPort>> {
+    serialport::new(PORT_NAME, BAUD_RATE)
+        .timeout(Duration::from_secs(10))
+        .data_bits(DataBits::Eight)
+        .stop_bits(StopBits::One)
+        .parity(Parity::None)
+        .open()
 }
 
 #[tokio::main]
 async fn main() {
-    let port = serialport::available_ports()
-        .expect("Expected to get serial ports")
-        // Use this if the previous vector is no longer needed
-        .into_iter()
-        .find(is_usb_serial_adapter)
-        .expect("Could not find serial port");
-
+    let port = open_serial_port().expect("Failed to open serial port. Does the port exist? Is it already in use? Can the app access it?");
     let port = Arc::new(Mutex::new(port));
     let app_state = AppState {
         port,
-        speed: Arc::new(Mutex::new(9600)),
+        speed: Arc::new(Mutex::new(None)),
     };
 
     let serve_dir = ServeDir::new("../client/dist")
