@@ -87,7 +87,7 @@ struct AppState {
     port: Arc<Mutex<Box<dyn SerialPort>>>,
     /// The speed of the motor in RPM
     /// None if no value has been read yet
-    speed: Arc<Mutex<Option<u32>>>,
+    set_point: Arc<Mutex<Option<u16>>>,
 }
 
 fn open_serial_port() -> serialport::Result<Box<dyn SerialPort>> {
@@ -100,24 +100,35 @@ fn open_serial_port() -> serialport::Result<Box<dyn SerialPort>> {
 }
 
 mod api {
-    use axum::{extract::State, http::StatusCode, response::IntoResponse};
+    use axum::{
+        extract::{rejection::LengthLimitError, State},
+        http::{header::ValueDrain, response, StatusCode},
+        response::IntoResponse,
+    };
 
     use crate::AppState;
 
     pub async fn get_current_set_point(
         State(state): State<AppState>,
     ) -> Result<impl IntoResponse, StatusCode> {
+        let mut value = state.set_point.lock().unwrap();
+
+        if let Some(value) = value.as_ref() {
+            return Ok(value.to_string());
+        }
+
+        // Else load and set value as we are the master for modbus and the only ones that can change it on the device
         let mut port = state.port.lock().map_err(|error| {
             eprintln!("Failed to open serial port: {}", error);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
-        let value = crate::get_current_set_point(&mut *port)
-            .map_err(|e| e.to_string())
-            .map_err(|error| {
-                eprintln!("Failed to read current set point: {}", error);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
-        Ok(value.to_string())
+        let new_value = crate::get_current_set_point(&mut *port).map_err(|error| {
+            eprintln!("Failed to read current set point: {}", error);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+        *value = Some(new_value);
+        Ok(new_value.to_string())
     }
 }
 
@@ -127,7 +138,7 @@ async fn main() {
     let port = Arc::new(Mutex::new(port));
     let app_state = AppState {
         port,
-        speed: Arc::new(Mutex::new(None)),
+        set_point: Arc::new(Mutex::new(None)),
     };
 
     let serve_dir = ServeDir::new("../client/dist")
