@@ -99,6 +99,28 @@ fn open_serial_port() -> serialport::Result<Box<dyn SerialPort>> {
         .open()
 }
 
+mod api {
+    use axum::{extract::State, http::StatusCode, response::IntoResponse};
+
+    use crate::AppState;
+
+    pub async fn get_current_set_point(
+        State(state): State<AppState>,
+    ) -> Result<impl IntoResponse, StatusCode> {
+        let mut port = state.port.lock().map_err(|error| {
+            eprintln!("Failed to open serial port: {}", error);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+        let value = crate::get_current_set_point(&mut *port)
+            .map_err(|e| e.to_string())
+            .map_err(|error| {
+                eprintln!("Failed to read current set point: {}", error);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+        Ok(value.to_string())
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let port = open_serial_port().expect("Failed to open serial port. Does the port exist? Is it already in use? Can the app access it?");
@@ -112,7 +134,10 @@ async fn main() {
         .not_found_service(ServeFile::new("../client/dist/index.html"));
 
     let app = Router::new()
-        .route("/api", get(|| async { "Hello, World!" }))
+        .route(
+            "/api/fan/2/setpoint/current",
+            get(api::get_current_set_point),
+        )
         .fallback_service(serve_dir)
         .with_state(app_state);
 
