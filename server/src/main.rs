@@ -37,6 +37,7 @@ const FAN_ADDRESS: u8 = 0x02;
 
 mod function_codes {
     pub const READ_INPUT_REGISTERS: u8 = 0x04;
+    pub const WRITE_SINGLE_REGISTER: u8 = 0x06;
 }
 
 fn get_current_set_point(port: &mut Box<dyn SerialPort>) -> Result<u16, serialport::Error> {
@@ -81,6 +82,69 @@ fn get_current_set_point(port: &mut Box<dyn SerialPort>) -> Result<u16, serialpo
     let value = u16::from_be_bytes([response_buffer[3], response_buffer[4]]);
     Ok(value)
 }
+enum UpdateSetPointError {
+    SerialPortError(serialport::Error),
+    /// The value is larger than 6400
+    ValueLargerThan6400,
+}
+
+impl From<serialport::Error> for UpdateSetPointError {
+    fn from(error: serialport::Error) -> Self {
+        UpdateSetPointError::SerialPortError(error)
+    }
+}
+
+impl From<std::io::Error> for UpdateSetPointError {
+    fn from(error: std::io::Error) -> Self {
+        UpdateSetPointError::SerialPortError(error.into())
+    }
+}
+
+fn set_current_set_point(
+    port: &mut Box<dyn SerialPort>,
+    set_point: u16,
+) -> Result<(), UpdateSetPointError> {
+    if set_point > 6400 {
+        return Err(UpdateSetPointError::ValueLargerThan6400);
+    }
+
+    // Build the message
+    let mut message = [0x00u8; 8];
+
+    // Device address
+    message[0] = FAN_ADDRESS;
+
+    // Function code
+    message[1] = function_codes::WRITE_SINGLE_REGISTER;
+
+    // Address
+    let address = registers::holding_registers::REFERENCE_SET_POINT.to_be_bytes();
+    message[2] = address[0];
+    message[3] = address[1];
+
+    // Value
+    let value = set_point.to_be_bytes();
+    message[4] = value[0];
+    message[5] = value[1];
+
+    // Checksum
+    let checksum: [u8; 2] = CRC.checksum(&message[..6]).to_be_bytes();
+    // They come out reversed...
+    message[6] = checksum[1];
+    message[7] = checksum[0];
+
+    // Send the message
+    port.write_all(&message)?;
+
+    // Read the response
+    // Address 1 + Function code 1 + Address 2 + Value 2 + 2 bytes of CRC
+    const RESPONSE_LENGTH: usize = 7;
+    let response_buffer = &mut [0u8; RESPONSE_LENGTH];
+    port.read_exact(response_buffer)?;
+    //TODO validate the response
+
+    Ok(())
+}
 
 #[derive(Clone)]
 struct AppState {
@@ -100,11 +164,7 @@ fn open_serial_port() -> serialport::Result<Box<dyn SerialPort>> {
 }
 
 mod api {
-    use axum::{
-        extract::{rejection::LengthLimitError, State},
-        http::{header::ValueDrain, response, StatusCode},
-        response::IntoResponse,
-    };
+    use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 
     use crate::AppState;
 
@@ -119,7 +179,7 @@ mod api {
 
         // Else load and set value as we are the master for modbus and the only ones that can change it on the device
         let mut port = state.port.lock().map_err(|error| {
-            eprintln!("Failed to open serial port: {}", error);
+            eprintln!("Failed to access serial port: {}", error);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
         let new_value = crate::get_current_set_point(&mut *port).map_err(|error| {
@@ -129,6 +189,49 @@ mod api {
 
         *value = Some(new_value);
         Ok(new_value.to_string())
+    }
+
+    pub async fn update_set_point(
+        State(state): State<AppState>,
+        Json(value): Json<u16>,
+    ) -> impl IntoResponse {
+        if value > 6400 {
+            return (StatusCode::BAD_REQUEST, "Value needs to be 6400 or less").into_response();
+        }
+
+        let port = state.port.lock();
+
+        let mut port = match port {
+            Ok(port) => port,
+            Err(error) => {
+                eprintln!("Failed to access serial port: {}", error);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to access serial port",
+                )
+                    .into_response();
+            }
+        };
+
+        if let Err(error) = crate::set_current_set_point(&mut *port, value) {
+            return match error {
+                crate::UpdateSetPointError::SerialPortError(error) => {
+                    eprintln!("Failed to update set point: {}", error);
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Failed to update set point",
+                    )
+                        .into_response()
+                }
+                crate::UpdateSetPointError::ValueLargerThan6400 => {
+                    (StatusCode::BAD_REQUEST, "Value needs to be 6400 or less").into_response()
+                }
+            };
+        };
+
+        state.set_point.lock().unwrap().replace(value);
+        let value = value.to_string();
+        return (StatusCode::OK, value).into_response();
     }
 }
 
@@ -144,11 +247,12 @@ async fn main() {
     let serve_dir = ServeDir::new("../client/dist")
         .not_found_service(ServeFile::new("../client/dist/index.html"));
 
+    let api_routes = Router::new().route(
+        "/fan/2/setpoint/current",
+        get(api::get_current_set_point).patch(api::update_set_point),
+    );
     let app = Router::new()
-        .route(
-            "/api/fan/2/setpoint/current",
-            get(api::get_current_set_point),
-        )
+        .nest("/api", api_routes)
         .fallback_service(serve_dir)
         .with_state(app_state);
 
