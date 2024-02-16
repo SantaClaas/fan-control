@@ -14,7 +14,7 @@ async function getCurrentSetPoint() {
 
 function App() {
   const [setPointResponse] = createResource(getCurrentSetPoint);
-  return <>{JSON.stringify(setPointResponse())}</>;
+  return <Slider />;
 }
 
 export default App;
