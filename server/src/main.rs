@@ -237,6 +237,7 @@ mod api {
 
 #[tokio::main]
 async fn main() {
+    // Serial port setup
     let port = open_serial_port().expect("Failed to open serial port. Does the port exist? Is it already in use? Can the app access it?");
     let port = Arc::new(Mutex::new(port));
     let app_state = AppState {
@@ -244,19 +245,27 @@ async fn main() {
         set_point: Arc::new(Mutex::new(None)),
     };
 
+    // Set up logging
+    simple_logger::init_with_level(log::Level::Info).expect("couldn't initialize logging");
+
+    // SPA setup
     let serve_dir = ServeDir::new("../client/dist")
         .not_found_service(ServeFile::new("../client/dist/index.html"));
 
+    // Set up API routes
     let api_routes = Router::new().route(
         "/fan/2/setpoint/current",
         get(api::get_current_set_point).patch(api::update_set_point),
     );
+
+    // Combine everything into a single app
     let app = Router::new()
         .nest("/api", api_routes)
         .fallback_service(serve_dir)
         .with_state(app_state);
 
     // run our app with hyper, listening globally on port 3000
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3001").await.unwrap();
+    log::info!("listening on http://{}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();
 }
