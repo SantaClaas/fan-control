@@ -4,8 +4,11 @@ import { createEffect, createSignal } from "solid-js";
  * A slider range input based on https://codepen.io/bgebelein/pen/wvYeapy
  * @returns {import("solid-js").JSX.Element}
  */
-function SliderVertical() {
+function Slider() {
   const [rpm, setRpm] = createSignal(0);
+  /**
+   * @type {HTMLInputElement | undefined}
+   */
   let input;
   createEffect(() => {
     if (input) input.value = rpm();
@@ -29,4 +32,4 @@ function SliderVertical() {
   );
 }
 
-export default SliderVertical;
+export default Slider;

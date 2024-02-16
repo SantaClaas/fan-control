@@ -1,5 +1,5 @@
 import { createResource } from "solid-js";
-import SliderVertical from "./SliderVertical";
+import Slider from "./Slider";
 
 async function getCurrentSetPoint() {
   const response = await fetch("/api/fan/2/setpoint/current");
@@ -16,8 +16,7 @@ function App() {
   const [setPointResponse] = createResource(getCurrentSetPoint);
   return (
     <>
-      {/* <Slider /> */}
-      <SliderVertical />
+      <Slider />
     </>
   );
 }
