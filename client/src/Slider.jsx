@@ -7,9 +7,17 @@ import styles from "./Slider.module.css";
  */
 function Slider() {
   return (
-    <div class={styles.wrapper}>
-      <input type="range" class={styles.slider} min="0" max="100" value="50" />
-    </div>
+    <>
+      <div class={styles.wrapper}>
+        <input
+          type="range"
+          class={styles.slider}
+          min="0"
+          max="100"
+          value="50"
+        />
+      </div>
+    </>
   );
 }
 
