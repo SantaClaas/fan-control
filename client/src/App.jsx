@@ -1,5 +1,4 @@
 import { createResource } from "solid-js";
-import Slider from "./Slider";
 import SliderVertical from "./SliderVertical";
 
 async function getCurrentSetPoint() {
