@@ -1,14 +1,33 @@
 import { createEffect, createSignal, createResource } from "solid-js";
 
-async function getCurrentSetPoint() {
-  const response = await fetch("/api/fan/2/setpoint/current");
+const MAX_SET_POINT = 64_000;
+async function getSetPoint() {
+  const response = await fetch("/api/fan/2/setpoint");
 
-  if (!response.ok) {
-    return { error: "Failed to fetch setpoint" };
-  }
+  if (!response.ok)
+    throw new Error(
+      "Server respoded but could not get setpoint. See network tab for details."
+    );
 
   const data = await response.json();
   return data;
+}
+
+/**
+ * @param {Number} setPoint
+ */
+async function updateSetPoint(setPoint) {
+  if (setPoint < 0 || setPoint > MAX_SET_POINT) {
+    throw new Error("Setpoint out of range");
+  }
+
+  const response = await fetch("/api/fan/2/setpoint", {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: setPoint.toString(),
+  });
 }
 
 /**
@@ -20,7 +39,7 @@ function FanControl() {
    * @type {import("solid-js").Signal<number | undefined>}
    */
   const [setPoint, setSetPoint] = createSignal();
-  const [setPointResponse] = createResource(getCurrentSetPoint);
+  const [setPointResponse] = createResource(getSetPoint);
   /**
    * @type {HTMLInputElement | undefined}
    */
@@ -32,7 +51,7 @@ function FanControl() {
 
   const valueLabel = () => {
     if (setPointResponse.loading) return "Loading";
-    if (setPointResponse.error) return "Error loading";
+    if (setPointResponse.error) return "Error";
     return setPoint();
   };
 
@@ -46,9 +65,11 @@ function FanControl() {
         type="range"
         class="inline-block align-middle w-3/4"
         min="0"
-        max="100"
+        max={MAX_SET_POINT}
+        value={setPoint() || 0}
         disabled={setPointResponse.loading || setPointResponse.error}
         onInput={(event) => setSetPoint(Number(event.target.value))}
+        onChange={(event) => updateSetPoint(Number(event.target.value))}
         ref={input}
       />
       <span class="align-middle min-w-[4ch] mx-4">{valueLabel()}</span>

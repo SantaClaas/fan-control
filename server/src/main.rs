@@ -34,6 +34,7 @@ fn is_usb_serial_adapter(port: &SerialPortInfo) -> bool {
 const PORT_NAME: &str = "/dev/cu.usbserial-150";
 const BAUD_RATE: u32 = 9_600;
 const FAN_ADDRESS: u8 = 0x02;
+const MAX_SET_POINT: u16 = 64_000;
 
 mod function_codes {
     pub const READ_INPUT_REGISTERS: u8 = 0x04;
@@ -104,7 +105,7 @@ fn set_current_set_point(
     port: &mut Box<dyn SerialPort>,
     set_point: u16,
 ) -> Result<(), UpdateSetPointError> {
-    if set_point > 6400 {
+    if set_point > MAX_SET_POINT {
         return Err(UpdateSetPointError::ValueLargerThan6400);
     }
 
@@ -166,7 +167,7 @@ fn open_serial_port() -> serialport::Result<Box<dyn SerialPort>> {
 mod api {
     use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 
-    use crate::AppState;
+    use crate::{AppState, MAX_SET_POINT};
 
     pub async fn get_current_set_point(
         State(state): State<AppState>,
@@ -195,7 +196,7 @@ mod api {
         State(state): State<AppState>,
         Json(value): Json<u16>,
     ) -> impl IntoResponse {
-        if value > 6400 {
+        if value > MAX_SET_POINT {
             return (StatusCode::BAD_REQUEST, "Value needs to be 6400 or less").into_response();
         }
 
@@ -254,7 +255,7 @@ async fn main() {
 
     // Set up API routes
     let api_routes = Router::new().route(
-        "/fan/2/setpoint/current",
+        "/fan/2/setpoint",
         get(api::get_current_set_point).patch(api::update_set_point),
     );
 
@@ -265,7 +266,7 @@ async fn main() {
         .with_state(app_state);
 
     // run our app with hyper, listening globally on port 3000
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3001").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     log::info!("listening on http://{}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();
 }
