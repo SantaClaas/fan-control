@@ -180,11 +180,11 @@ mod api {
 
         // Else load and set value as we are the master for modbus and the only ones that can change it on the device
         let mut port = state.port.lock().map_err(|error| {
-            eprintln!("Failed to access serial port: {}", error);
+            log::error!("Failed to access serial port: {}", error);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
         let new_value = crate::get_current_set_point(&mut *port).map_err(|error| {
-            eprintln!("Failed to read current set point: {}", error);
+            log::error!("Failed to read current set point: {}", error);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
@@ -205,7 +205,7 @@ mod api {
         let mut port = match port {
             Ok(port) => port,
             Err(error) => {
-                eprintln!("Failed to access serial port: {}", error);
+                log::error!("Failed to access serial port: {}", error);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "Failed to access serial port",
@@ -217,7 +217,7 @@ mod api {
         if let Err(error) = crate::set_current_set_point(&mut *port, value) {
             return match error {
                 crate::UpdateSetPointError::SerialPortError(error) => {
-                    eprintln!("Failed to update set point: {}", error);
+                    log::error!("Failed to update set point: {}", error);
                     (
                         StatusCode::INTERNAL_SERVER_ERROR,
                         "Failed to update set point",
