@@ -1,4 +1,9 @@
-import { createEffect, createSignal, createResource } from "solid-js";
+import {
+  createEffect,
+  createSignal,
+  createResource,
+  onCleanup,
+} from "solid-js";
 
 const MAX_SET_POINT = 64_000;
 async function getSetPoint() {
@@ -64,6 +69,41 @@ function FanControl() {
     if (isDisabled()) return;
     updateSetPoint(Number(event.target.value));
   }
+
+  createEffect(() => {
+    console.log("Creating event source");
+
+    const controller = new AbortController();
+    const eventSource = new EventSource("/api/sse");
+    eventSource.addEventListener(
+      "message",
+      (event) => {
+        if (event.data === "None") return;
+
+        const value = Number(event.data);
+
+        console.debug("Received set point update", value);
+        if (value === setPoint()) return;
+
+        setSetPoint(value);
+      },
+      { signal: controller.signal }
+    );
+
+    eventSource.addEventListener(
+      "error",
+      (event) => {
+        console.error("EventSource error:", event);
+      },
+      { signal: controller.signal }
+    );
+
+    onCleanup(() => {
+      console.debug("Cleaning up event source");
+      controller.abort();
+      eventSource.close();
+    });
+  });
 
   return (
     <>

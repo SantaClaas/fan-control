@@ -4,11 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-axum = "0.7.4"
-crc = "3.0.1"
-log = "0.4.20"
-serialport = { version = "4.3.0", features = ["serde"] }
-simple_logger = "4.3.3"
-tokio = { version = "1.36.0", features = ["full"] }
-tower = "0.4.13"
-tower-http = { version = "0.5.1", features = ["fs"] }
+axum = "0.7"
+crc = "3.0"
+log = "0.4"
+serialport = { version = "4.3", features = ["serde"] }
+simple_logger = "4.3"
+tokio = { version = "1.36", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["fs"] }

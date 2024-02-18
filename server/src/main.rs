@@ -1,13 +1,21 @@
 use std::{
+    convert::Infallible,
     sync::{Arc, Mutex},
     time::Duration,
 };
 
-use axum::{routing::get, Router};
+use axum::{
+    extract::State,
+    response::{sse::Event, Sse},
+    routing::get,
+    Router,
+};
 use crc::{Crc, CRC_16_MODBUS};
 use serialport::{
     DataBits, Parity, SerialPort, SerialPortInfo, SerialPortType, StopBits, UsbPortInfo,
 };
+use tokio::stream;
+use tokio_stream::StreamExt as _;
 use tower_http::services::{ServeDir, ServeFile};
 
 const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_MODBUS);
@@ -86,7 +94,7 @@ fn get_current_set_point(port: &mut Box<dyn SerialPort>) -> Result<u16, serialpo
 enum UpdateSetPointError {
     SerialPortError(serialport::Error),
     /// The value is larger than 6400
-    ValueLargerThan6400,
+    ValueTooLarge,
 }
 
 impl From<serialport::Error> for UpdateSetPointError {
@@ -106,7 +114,7 @@ fn set_current_set_point(
     set_point: u16,
 ) -> Result<(), UpdateSetPointError> {
     if set_point > MAX_SET_POINT {
-        return Err(UpdateSetPointError::ValueLargerThan6400);
+        return Err(UpdateSetPointError::ValueTooLarge);
     }
 
     // Build the message
@@ -153,6 +161,7 @@ struct AppState {
     /// The speed of the motor in RPM
     /// None if no value has been read yet
     set_point: Arc<Mutex<Option<u16>>>,
+    set_point_sender: Arc<tokio::sync::watch::Sender<Option<u16>>>,
 }
 
 fn open_serial_port() -> serialport::Result<Box<dyn SerialPort>> {
@@ -197,7 +206,21 @@ mod api {
         Json(value): Json<u16>,
     ) -> impl IntoResponse {
         if value > MAX_SET_POINT {
-            return (StatusCode::BAD_REQUEST, "Value needs to be 6400 or less").into_response();
+            return (
+                StatusCode::BAD_REQUEST,
+                format!("Value needs to be {MAX_SET_POINT} or less"),
+            )
+                .into_response();
+        }
+
+        // Don't update the value if it's the same
+        let is_same = {
+            let current_value = *state.set_point_sender.borrow();
+            current_value.is_some_and(|current_value| current_value == value)
+        };
+
+        if is_same {
+            return (StatusCode::OK, value.to_string()).into_response();
         }
 
         let port = state.port.lock();
@@ -224,26 +247,75 @@ mod api {
                     )
                         .into_response()
                 }
-                crate::UpdateSetPointError::ValueLargerThan6400 => {
-                    (StatusCode::BAD_REQUEST, "Value needs to be 6400 or less").into_response()
-                }
+                crate::UpdateSetPointError::ValueTooLarge => (
+                    StatusCode::BAD_REQUEST,
+                    format!("Value needs to be {MAX_SET_POINT} or less"),
+                )
+                    .into_response(),
             };
         };
 
         state.set_point.lock().unwrap().replace(value);
+        // Update other connected clients with new value
+        state.set_point_sender.send(Some(value)).unwrap();
+
         let value = value.to_string();
         return (StatusCode::OK, value).into_response();
     }
 }
 
+async fn sse_handler(
+    State(state): State<AppState>,
+) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
+    // let stream = stream::repeat_with(|| Event::default().data("hello"));
+    // tokio_stream::wrappers::WatchStream::new(rx)
+
+    let receiver = state.set_point_sender.subscribe();
+    let stream = tokio_stream::wrappers::WatchStream::new(receiver)
+        .map(|value| {
+            let value = value
+                .map(|value| value.to_string())
+                .unwrap_or("None".to_string());
+            Event::default().data(value)
+        })
+        .map(Ok);
+
+    Sse::new(stream).keep_alive(
+        axum::response::sse::KeepAlive::new()
+            .interval(Duration::from_secs(1))
+            .text("keep-alive-text"),
+    )
+}
+
 #[tokio::main]
 async fn main() {
     // Serial port setup
-    let port = open_serial_port().expect("Failed to open serial port. Does the port exist? Is it already in use? Can the app access it?");
+    let port = open_serial_port();
+
+    let port = match port {
+        Ok(port) => port,
+        Err(error) => {
+            // List available ports
+            let ports = serialport::available_ports().unwrap();
+            // Combine list of ports in one string
+            let ports = ports
+                .iter()
+                .map(|port| format!("{}: {:?}", port.port_name, port.port_type))
+                .collect::<Vec<String>>()
+                .join("\n");
+
+            panic!("Failed to open serial port: {}\n Does the port exist? Is it already in use? Can the app access it?\n Available ports:\n{}",error, ports);
+        }
+    };
     let port = Arc::new(Mutex::new(port));
+
+    // App state setup
+    let (sender, _receiver) = tokio::sync::watch::channel(None::<u16>);
+
     let app_state = AppState {
         port,
         set_point: Arc::new(Mutex::new(None)),
+        set_point_sender: Arc::new(sender),
     };
 
     // Set up logging
@@ -254,10 +326,12 @@ async fn main() {
         .not_found_service(ServeFile::new("../client/dist/index.html"));
 
     // Set up API routes
-    let api_routes = Router::new().route(
-        "/fan/2/setpoint",
-        get(api::get_current_set_point).patch(api::update_set_point),
-    );
+    let api_routes = Router::new()
+        .route(
+            "/fan/2/setpoint",
+            get(api::get_current_set_point).patch(api::update_set_point),
+        )
+        .route("/sse", get(sse_handler));
 
     // Combine everything into a single app
     let app = Router::new()
