@@ -55,6 +55,16 @@ function FanControl() {
     return setPoint();
   };
 
+  const isDisabled = () => setPointResponse.loading || setPointResponse.error;
+
+  /**
+   * @param {{target: HTMLInputElement}} event
+   */
+  function handleChange(event) {
+    if (isDisabled()) return;
+    updateSetPoint(Number(event.target.value));
+  }
+
   return (
     <>
       <label for="speed" class="block">
@@ -67,9 +77,9 @@ function FanControl() {
         min="0"
         max={MAX_SET_POINT}
         value={setPoint() || 0}
-        disabled={setPointResponse.loading || setPointResponse.error}
+        disabled={isDisabled()}
         onInput={(event) => setSetPoint(Number(event.target.value))}
-        onChange={(event) => updateSetPoint(Number(event.target.value))}
+        onChange={handleChange}
         ref={input}
       />
       <span class="align-middle min-w-[4ch] mx-4">{valueLabel()}</span>
