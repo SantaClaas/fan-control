@@ -31,8 +31,8 @@ fn is_usb_serial_adapter(port: &SerialPortInfo) -> bool {
     }
 }
 
-const PORT_NAME: &str = "/dev/cu.usbserial-150";
-const BAUD_RATE: u32 = 9_600;
+const PORT_NAME: &str = "/dev/cu.usbserial-2150";
+const BAUD_RATE: u32 = 19_200;
 const FAN_ADDRESS: u8 = 0x02;
 const MAX_SET_POINT: u16 = 64_000;
 
@@ -160,7 +160,7 @@ fn open_serial_port() -> serialport::Result<Box<dyn SerialPort>> {
         .timeout(Duration::from_secs(10))
         .data_bits(DataBits::Eight)
         .stop_bits(StopBits::One)
-        .parity(Parity::None)
+        .parity(Parity::Even)
         .open()
 }
 
