@@ -45,6 +45,13 @@ function FanControl() {
    */
   const [setPoint, setSetPoint] = createSignal();
   const [setPointResponse] = createResource(getSetPoint);
+
+  createEffect(() => {
+    if (setPointResponse.loading || setPointResponse.error) return;
+
+    setSetPoint(setPointResponse());
+  });
+
   /**
    * @type {HTMLInputElement | undefined}
    */
@@ -57,7 +64,13 @@ function FanControl() {
   const valueLabel = () => {
     if (setPointResponse.loading) return "Loading";
     if (setPointResponse.error) return "Error";
-    return setPoint();
+    const value = setPoint();
+    console.debug("Value", value);
+    if (value === undefined) return "Not loaded";
+    return (value / MAX_SET_POINT).toLocaleString(undefined, {
+      style: "percent",
+      maximumFractionDigits: 0,
+    });
   };
 
   const isDisabled = () => setPointResponse.loading || setPointResponse.error;
