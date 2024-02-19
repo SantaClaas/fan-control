@@ -1,10 +1,11 @@
 use std::{
     io,
     sync::{Arc, Mutex, MutexGuard},
+    time::Duration,
 };
 
 use crc::{Crc, CRC_16_MODBUS};
-use serialport::SerialPort;
+use serialport::{DataBits, Parity, SerialPort, StopBits};
 
 use crate::registers;
 
@@ -22,6 +23,7 @@ pub(crate) struct Fan {
     port: Arc<Mutex<Box<dyn SerialPort>>>,
 }
 
+#[derive(Debug)]
 pub(crate) enum UpdateSetPointError<Guard> {
     SerialPortError(serialport::Error),
     /// The value is larger than 6400
@@ -47,6 +49,7 @@ impl<Guard> From<std::io::Error> for UpdateSetPointError<Guard> {
     }
 }
 
+#[derive(Debug)]
 pub(crate) enum GetSetPointError<Guard> {
     SerialPortError(io::Error),
     PoisonError(std::sync::PoisonError<Guard>),
@@ -161,5 +164,211 @@ impl Fan {
         // Extract the value
         let value = u16::from_be_bytes([response_buffer[3], response_buffer[4]]);
         Ok(value)
+    }
+}
+
+// Might expand to use mock in deveopment later to allow for testing without having the physical fan device
+#[cfg(test)]
+mod mock {
+    use serialport::{DataBits, Parity, SerialPort, StopBits};
+    use std::{io, time::Duration};
+
+    #[derive(Clone)]
+    pub(crate) struct MockedSerialPort {
+        baud_rate: u32,
+        data_bits: DataBits,
+        flow_control: serialport::FlowControl,
+        parity: Parity,
+        stop_bits: StopBits,
+        timeout: Duration,
+    }
+
+    impl Default for MockedSerialPort {
+        /// Based on the default settings for the fan we are using in production
+        fn default() -> Self {
+            use crate::fan_defaults::*;
+            Self {
+                baud_rate: BAUD_RATE,
+                data_bits: DATA_BITS,
+                flow_control: serialport::FlowControl::None,
+                parity: PARITY,
+                stop_bits: STOP_BITS,
+                timeout: DURATION,
+            }
+        }
+    }
+
+    impl io::Write for MockedSerialPort {
+        fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+            Ok(buffer.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl io::Read for MockedSerialPort {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            Ok(buffer.len())
+        }
+    }
+
+    impl SerialPort for MockedSerialPort {
+        fn name(&self) -> Option<String> {
+            let name = std::any::type_name::<MockedSerialPort>().to_string();
+            Some(name)
+        }
+
+        fn baud_rate(&self) -> serialport::Result<u32> {
+            Ok(self.baud_rate)
+        }
+
+        fn data_bits(&self) -> serialport::Result<DataBits> {
+            Ok(self.data_bits)
+        }
+
+        fn flow_control(&self) -> serialport::Result<serialport::FlowControl> {
+            Ok(self.flow_control)
+        }
+
+        fn parity(&self) -> serialport::Result<Parity> {
+            Ok(self.parity)
+        }
+
+        fn stop_bits(&self) -> serialport::Result<StopBits> {
+            Ok(self.stop_bits)
+        }
+
+        fn timeout(&self) -> Duration {
+            self.timeout
+        }
+
+        fn set_baud_rate(&mut self, baud_rate: u32) -> serialport::Result<()> {
+            self.baud_rate = baud_rate;
+            Ok(())
+        }
+
+        fn set_data_bits(&mut self, data_bits: DataBits) -> serialport::Result<()> {
+            self.data_bits = data_bits;
+            Ok(())
+        }
+
+        fn set_flow_control(
+            &mut self,
+            flow_control: serialport::FlowControl,
+        ) -> serialport::Result<()> {
+            self.flow_control = flow_control;
+            Ok(())
+        }
+
+        fn set_parity(&mut self, parity: Parity) -> serialport::Result<()> {
+            self.parity = parity;
+            Ok(())
+        }
+
+        fn set_stop_bits(&mut self, stop_bits: StopBits) -> serialport::Result<()> {
+            self.stop_bits = stop_bits;
+            Ok(())
+        }
+
+        fn set_timeout(&mut self, timeout: Duration) -> serialport::Result<()> {
+            self.timeout = timeout;
+            Ok(())
+        }
+
+        fn write_request_to_send(&mut self, _level: bool) -> serialport::Result<()> {
+            Ok(())
+        }
+
+        fn write_data_terminal_ready(&mut self, _level: bool) -> serialport::Result<()> {
+            Ok(())
+        }
+
+        fn read_clear_to_send(&mut self) -> serialport::Result<bool> {
+            Ok(true)
+        }
+
+        fn read_data_set_ready(&mut self) -> serialport::Result<bool> {
+            Ok(true)
+        }
+
+        fn read_ring_indicator(&mut self) -> serialport::Result<bool> {
+            Ok(true)
+        }
+
+        fn read_carrier_detect(&mut self) -> serialport::Result<bool> {
+            Ok(true)
+        }
+
+        fn bytes_to_read(&self) -> serialport::Result<u32> {
+            Ok(0)
+        }
+
+        fn bytes_to_write(&self) -> serialport::Result<u32> {
+            Ok(0)
+        }
+
+        fn clear(&self, _buffer_to_clear: serialport::ClearBuffer) -> serialport::Result<()> {
+            Ok(())
+        }
+
+        fn try_clone(&self) -> serialport::Result<Box<dyn SerialPort>> {
+            Ok(Box::new(MockedSerialPort {
+                baud_rate: self.baud_rate,
+                data_bits: self.data_bits,
+                flow_control: self.flow_control,
+                parity: self.parity,
+                stop_bits: self.stop_bits,
+                timeout: self.timeout,
+            }))
+        }
+
+        fn set_break(&self) -> serialport::Result<()> {
+            Ok(())
+        }
+
+        fn clear_break(&self) -> serialport::Result<()> {
+            Ok(())
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use self::mock::MockedSerialPort;
+
+    use super::*;
+    use crate::fan_defaults::FAN_ADDRESS;
+
+    // To be fair these tests aren't very useful yet
+    #[test]
+    fn can_set_set_point() {
+        // Arrange
+        let serial_port: MockedSerialPort = MockedSerialPort::default();
+
+        let port: Arc<Mutex<Box<dyn SerialPort>>> = Arc::new(Mutex::new(Box::new(serial_port)));
+
+        let fan = Fan::new(FAN_ADDRESS, port.clone());
+        // Act
+        let result = fan.set_current_set_point(0);
+
+        // Assert
+        result.expect("Failed to set set point");
+    }
+
+    #[test]
+    fn can_get_set_point() {
+        // Arrange
+        let serial_port: MockedSerialPort = MockedSerialPort::default();
+
+        let fan = Fan::new(FAN_ADDRESS, Arc::new(Mutex::new(Box::new(serial_port))));
+
+        // Act
+        let result = fan.get_current_set_point();
+
+        // Assert
+        let result = result.expect("Failed to get set point");
+        assert_eq!(result, 0);
     }
 }

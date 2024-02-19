@@ -1,5 +1,7 @@
 use std::{
     convert::Infallible,
+    io,
+    rc::Rc,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -33,14 +35,24 @@ fn is_usb_serial_adapter(port: &SerialPortInfo) -> bool {
                     manufacturer: None,
                     product: Some(product_name),
                 }),
-        } if product_name == "USB Serial" && port_name == PORT_NAME => true,
+        } if product_name == "USB Serial" && port_name == fan_defaults::PORT_NAME => true,
         _ => false,
     }
 }
 
-const PORT_NAME: &str = "/dev/cu.usbserial-2150";
-const BAUD_RATE: u32 = 19_200;
-const FAN_ADDRESS: u8 = 0x02;
+mod fan_defaults {
+    use std::time::Duration;
+
+    use serialport::{DataBits, Parity, StopBits};
+
+    pub(crate) const PORT_NAME: &str = "/dev/cu.usbserial-2150";
+    pub(crate) const BAUD_RATE: u32 = 19_200;
+    pub(crate) const FAN_ADDRESS: u8 = 0x02;
+    pub(crate) const DURATION: Duration = Duration::from_secs(1);
+    pub(crate) const DATA_BITS: DataBits = DataBits::Eight;
+    pub(crate) const PARITY: Parity = Parity::Even;
+    pub(crate) const STOP_BITS: StopBits = StopBits::One;
+}
 
 #[derive(Clone)]
 struct AppState {
@@ -52,11 +64,12 @@ struct AppState {
 }
 
 fn open_serial_port() -> serialport::Result<Box<dyn SerialPort>> {
+    use fan_defaults::*;
     serialport::new(PORT_NAME, BAUD_RATE)
-        .timeout(Duration::from_secs(10))
-        .data_bits(DataBits::Eight)
-        .stop_bits(StopBits::One)
-        .parity(Parity::Even)
+        .timeout(DURATION)
+        .data_bits(DATA_BITS)
+        .stop_bits(STOP_BITS)
+        .parity(PARITY)
         .open()
 }
 
@@ -204,7 +217,7 @@ async fn main() {
     // App state setup
     let (sender, _receiver) = tokio::sync::watch::channel(None::<u16>);
 
-    let fan = Fan::new(FAN_ADDRESS, port);
+    let fan = Fan::new(fan_defaults::FAN_ADDRESS, port);
     let app_state = AppState {
         fan,
         set_point: Arc::new(Mutex::new(None)),
