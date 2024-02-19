@@ -228,7 +228,10 @@ async fn main() {
     simple_logger::init_with_level(log::Level::Info).expect("couldn't initialize logging");
 
     // SPA setup
+    // Not used during development where we use vite for serving the client and reverse proxying API requests to the server
     let serve_dir = ServeDir::new("../client/dist")
+        // If the route is a client side navigation route, this will serve the app and let the app router take over the
+        // path handling after the app is loaded
         .not_found_service(ServeFile::new("../client/dist/index.html"));
 
     // Set up API routes

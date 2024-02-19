@@ -346,10 +346,9 @@ mod tests {
     fn can_set_set_point() {
         // Arrange
         let serial_port: MockedSerialPort = MockedSerialPort::default();
-
         let port: Arc<Mutex<Box<dyn SerialPort>>> = Arc::new(Mutex::new(Box::new(serial_port)));
-
         let fan = Fan::new(FAN_ADDRESS, port.clone());
+
         // Act
         let result = fan.set_current_set_point(0);
 
@@ -361,7 +360,6 @@ mod tests {
     fn can_get_set_point() {
         // Arrange
         let serial_port: MockedSerialPort = MockedSerialPort::default();
-
         let fan = Fan::new(FAN_ADDRESS, Arc::new(Mutex::new(Box::new(serial_port))));
 
         // Act
