@@ -229,10 +229,10 @@ async fn main() {
 
     // SPA setup
     // Not used during development where we use vite for serving the client and reverse proxying API requests to the server
-    let serve_dir = ServeDir::new("../client/dist")
+    let serve_dir = ServeDir::new("./client")
         // If the route is a client side navigation route, this will serve the app and let the app router take over the
         // path handling after the app is loaded
-        .not_found_service(ServeFile::new("../client/dist/index.html"));
+        .not_found_service(ServeFile::new("./client/index.html"));
 
     // Set up API routes
     let api_routes = Router::new()
