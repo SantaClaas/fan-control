@@ -43,7 +43,7 @@ RUN cargo build --release
 
 # Final base image
 # FROM debian:buster-slim
-FROM rust:1.76-slim-bookworm
+FROM rust:1.76-slim-bookworm as final
 
 # Copy the build artifacts from the build stage
 COPY --from=build-server /fan-control/target/release/fan-control .

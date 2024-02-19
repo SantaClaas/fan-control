@@ -45,7 +45,7 @@ mod fan_defaults {
 
     use serialport::{DataBits, Parity, StopBits};
 
-    pub(crate) const PORT_NAME: &str = "/dev/cu.usbserial-2150";
+    pub(crate) const PORT_NAME: &str = "/dev/cu.usbserial-2160";
     pub(crate) const BAUD_RATE: u32 = 19_200;
     pub(crate) const FAN_ADDRESS: u8 = 0x02;
     pub(crate) const DURATION: Duration = Duration::from_secs(1);
