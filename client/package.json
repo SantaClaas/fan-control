@@ -1,5 +1,6 @@
 {
   "name": "vite-template-solid",
+  "type": "module",
   "version": "0.0.0",
   "description": "",
   "scripts": {
@@ -13,6 +14,8 @@
   "devDependencies": {
     "autoprefixer": "^10.4.17",
     "postcss": "^8.4.35",
+    "prettier": "^3.2.5",
+    "prettier-plugin-tailwindcss": "^0.5.11",
     "solid-devtools": "^0.29.2",
     "tailwindcss": "^3.4.1",
     "vite": "^5.0.11",
