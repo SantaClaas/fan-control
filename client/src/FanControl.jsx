@@ -184,6 +184,7 @@ function ModeFanControl({ setPoint, setSetPoint }) {
     );
   }
 
+  //TODO add swipe over animation when switching modes
   return (
     <fieldset class="grid grid-flow-col rounded-xl bg-cyan-800 text-slate-100">
       <legend class="sr-only">Speed</legend>{" "}
@@ -322,6 +323,8 @@ function FanControl() {
         ref={input}
       />
       <span class="mx-4 min-w-[4ch] align-middle">{valueLabel()}</span>
+      <input type="range" min="0" max="100" class="" />
+      <input type="range" min="0" max="100" class="range" />
       <ModeFanControl setPoint={setPoint} setSetPoint={setSetPoint} />
     </>
   );
