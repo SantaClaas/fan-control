@@ -20,6 +20,10 @@ concurrency:
   group: "pages"
   cancel-in-progress: true
 
+defaults:
+  run:
+    working-directory: ./client
+
 jobs:
   build:
     runs-on: ubuntu-latest
