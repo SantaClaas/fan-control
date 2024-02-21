@@ -11,7 +11,7 @@
     }
 
     &::-webkit-slider-thumb {
-      @apply w-0 appearance-none bg-white shadow-[-20rem_0_0_20rem] shadow-white/10;
+      @apply w-0 appearance-none shadow-[-20rem_0_0_20rem] shadow-white/30;
     }
 
     &::-moz-range-track {

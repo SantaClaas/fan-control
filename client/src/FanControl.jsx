@@ -6,7 +6,13 @@ import {
 } from "solid-js";
 
 const MAX_SET_POINT = 64_000;
-async function getSetPoint() {
+/**
+ *
+ * @param {boolean} isDemo
+ * @returns {Promise<number | undefined>}
+ */
+async function getSetPoint(isDemo) {
+  if (isDemo) return;
   //TODO error handling
   const response = await fetch("/api/fan/2/setpoint");
 
@@ -122,94 +128,121 @@ function ModeFanControl({ setPoint, setSetPoint }) {
 
   const value = () => setPoint() || 0;
 
-  // return (
-  //   <fieldset disabled={isDisabled()} class="h-12 rounded-xl bg-cyan-800">
-  //     <legend class="sr-only">Speed</legend>
-  //     <label>
-  //       <input
-  //         type="radio"
-  //         name="speed"
-  //         class="appearance-none"
-  //         value={OFF.toString()}
-  //         onChange={handleChange}
-  //         checked={value() === OFF}
-  //       />
-  //       <IconFanOff />
-  //       <span>Off</span>
-  //     </label>
-  //     <label>
-  //       <input
-  //         type="radio"
-  //         name="speed"
-  //         value={NIGHT.toString()}
-  //         onChange={handleChange}
-  //         checked={OFF < value() && value() <= NIGHT}
-  //       />
-  //       Night
-  //     </label>
-  //     <label>
-  //       <input
-  //         type="radio"
-  //         name="speed"
-  //         value={DAY.toString()}
-  //         onChange={handleChange}
-  //         checked={NIGHT < value() && value() <= DAY}
-  //       />
-  //       Day
-  //     </label>
-  //     <label>
-  //       <input
-  //         type="radio"
-  //         name="speed"
-  //         value={PARTY.toString()}
-  //         onChange={handleChange}
-  //         checked={DAY < value() && value() <= PARTY}
-  //       />
-  //       High
-  //     </label>
-  //   </fieldset>
-  // );
-
-  /**
-   * @param {{label: string, children: import("solid-js").JSX.Element}} param0
-   * @returns {import("solid-js").JSX.Element}
-   */
-  function Option({ label, children }) {
-    return (
-      <label class="block p-2 text-center ring-1 has-[:checked]:bg-teal-900 has-[:checked]:text-teal-50 has-[:checked]:ring-teal-500">
-        <input type="radio" name="speed" class="sr-only" />
-        {children}
-        <span>{label}</span>
-      </label>
-    );
-  }
-
   //TODO add swipe over animation when switching modes
   return (
-    <fieldset class="grid grid-flow-col rounded-xl bg-cyan-800 text-slate-100">
+    <fieldset
+      disabled={isDisabled()}
+      class="grid grid-flow-col rounded-xl bg-cyan-800 text-slate-100"
+    >
       <legend class="sr-only">Speed</legend>{" "}
       <label class="block rounded-l-xl rounded-r-sm p-2 text-center has-[:checked]:bg-teal-900 has-[:checked]:text-teal-50 has-[:checked]:ring-1 has-[:checked]:ring-teal-500">
-        <input type="radio" name="speed" class="sr-only" />
+        <input
+          type="radio"
+          name="speed"
+          class="sr-only"
+          value={OFF.toString()}
+          onChange={handleChange}
+          checked={value() === OFF}
+        />
         <IconFanOff />
         <span>Off</span>
       </label>
       <label class="block rounded-sm p-2 text-center has-[:checked]:bg-teal-900 has-[:checked]:text-teal-50 has-[:checked]:ring-1 has-[:checked]:ring-teal-500">
-        <input type="radio" name="speed" class="sr-only" />
+        <input
+          type="radio"
+          name="speed"
+          class="sr-only"
+          value={NIGHT.toString()}
+          onChange={handleChange}
+          checked={OFF < value() && value() <= NIGHT}
+        />
         <IconFanNight />
         <span>Night</span>
       </label>
       <label class="block rounded-sm p-2 text-center has-[:checked]:bg-teal-900 has-[:checked]:text-teal-50 has-[:checked]:ring-1 has-[:checked]:ring-teal-500">
-        <input type="radio" name="speed" class="sr-only" />
+        <input
+          type="radio"
+          name="speed"
+          class="sr-only"
+          value={DAY.toString()}
+          onChange={handleChange}
+          checked={NIGHT < value() && value() <= DAY}
+        />
         <IconFanDay />
         <span>Day</span>
       </label>
       <label class="block rounded-sm rounded-r-xl p-2 text-center has-[:checked]:bg-teal-900 has-[:checked]:text-teal-50 has-[:checked]:ring-1 has-[:checked]:ring-teal-500">
-        <input type="radio" name="speed" class="sr-only" />
+        <input
+          type="radio"
+          name="speed"
+          class="sr-only"
+          value={PARTY.toString()}
+          onChange={handleChange}
+          checked={DAY < value()}
+        />
         <IconFanParty />
         <span>Party</span>
       </label>
     </fieldset>
   );
+}
+/**
+ * @param {Function} callback
+ * @param {number} delayMilliseconds
+ * @returns {(...args: any[]) => void}
+ */
+function debounce(callback, delayMilliseconds = 250) {
+  /**
+   * @type {NodeJS.Timeout | undefined}
+   */
+  let timeoutId;
+
+  return (...args) => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => callback(...args), delayMilliseconds);
+  };
+}
+
+/**
+ * @param {Function} callback
+ * @param {number} delayMilliseconds
+ * @returns {(...args: any[]) => void}
+ */
+function throttle(callback, delayMilliseconds = 250) {
+  let isWaiting = false;
+  /** @type {any[] | undefined} */
+  let waitingCallArguments;
+
+  function executeLastOrUnblockNext() {
+    // If no execution is waiting, reset flag so the next call can be executed
+    if (!waitingCallArguments) {
+      isWaiting = false;
+      return;
+    }
+
+    // If there is a call waiting, execute it and block the next calls until the timeout
+    callback(...waitingCallArguments);
+    waitingCallArguments = undefined;
+    isWaiting = true;
+
+    // Allow new calls after delay
+    setTimeout(executeLastOrUnblockNext, delayMilliseconds);
+  }
+
+  return (...args) => {
+    if (isWaiting) {
+      // We assume the callback is the same function so we store the latest arguments
+      // Set arguments for next call to latest call arguments
+      waitingCallArguments = args;
+      return;
+    }
+
+    // If no call is delayed execute immediately and block the next calls until the timeout
+    callback(...args);
+    isWaiting = true;
+    // Allow new calls after delay
+    setTimeout(executeLastOrUnblockNext, delayMilliseconds);
+  };
 }
 
 /**
@@ -217,15 +250,22 @@ function ModeFanControl({ setPoint, setSetPoint }) {
  * @returns {import("solid-js").JSX.Element}
  */
 function FanControl() {
-  const isDemo = new URL(window.location.href).searchParams.has("demo");
+  const isDemo = true;
   /**
    * @type {import("solid-js").Signal<number | undefined>}
    */
   const [setPoint, setSetPoint] = createSignal();
-  const [setPointResponse] = createResource(getSetPoint);
+  const [setPointResponse] = createResource(isDemo, getSetPoint);
+  //TODO get maxRpm from server and fan
+  const [maxRpm, setMaxRpm] = createSignal(2_000);
+
+  const rpm = () => Math.round(((setPoint() ?? 0) / MAX_SET_POINT) * maxRpm());
+
+  //TODO get and update volume flow from server
+  const [volumeFlow, setVolumeFlow] = createSignal(1_000);
 
   createEffect(() => {
-    if (setPointResponse.loading || setPointResponse.error) return;
+    if (isDemo || setPointResponse.loading || setPointResponse.error) return;
 
     setSetPoint(setPointResponse());
   });
@@ -235,6 +275,8 @@ function FanControl() {
    */
   let input;
   createEffect(() => {
+    if (isDemo) return;
+
     let value = setPoint();
     if (value === undefined || Number.isNaN(value)) return;
 
@@ -245,32 +287,12 @@ function FanControl() {
     if (value && input) input.value = value.toString();
   });
 
-  const valueLabel = () => {
-    if (setPointResponse.loading) return "Loading";
-    if (setPointResponse.error) return "Error";
-    const value = setPoint();
-    console.debug("Value", value);
-    if (value === undefined) return "Not loaded";
-    return (value / MAX_SET_POINT).toLocaleString(undefined, {
-      style: "percent",
-      maximumFractionDigits: 0,
-    });
-  };
-
   const isDisabled = () => setPointResponse.loading || setPointResponse.error;
 
-  /**
-   * @param {{target: HTMLInputElement}} event
-   */
-  function handleChange(event) {
-    if (isDisabled()) return;
-
-    const value = Number(event.target.value);
-    if (Number.isNaN(value)) return;
-    setSetPoint(value);
-  }
-
+  // Handle updates to set point from other clients sent through server-sent events
+  //TODO remove uneccesarry effect here
   createEffect(() => {
+    if (isDemo) return;
     console.log("Creating event source");
 
     const controller = new AbortController();
@@ -305,27 +327,59 @@ function FanControl() {
     });
   });
 
+  /** @param {{ target: HTMLInputElement; }} event */
+  function handleInput(event) {
+    // clearTimeout(inputDebounceTimeout);
+    if (isDisabled()) return;
+    const value = Number(event.target.value);
+    if (Number.isNaN(value)) return;
+
+    throttle(setSetPoint, 250)(value);
+  }
+
   return (
     <>
-      <label for="speed" class="block">
-        Speed (RPM)
-      </label>{" "}
-      <input
-        id="speed"
-        type="range"
-        class="inline-block w-3/4 align-middle"
-        min="0"
-        max={MAX_SET_POINT}
-        value={setPoint() || 0}
-        disabled={isDisabled()}
-        onInput={(event) => setSetPoint(Number(event.target.value))}
-        onChange={handleChange}
-        ref={input}
-      />
-      <span class="mx-4 min-w-[4ch] align-middle">{valueLabel()}</span>
-      <input type="range" min="0" max="100" class="" />
-      <input type="range" min="0" max="100" class="range" />
-      <ModeFanControl setPoint={setPoint} setSetPoint={setSetPoint} />
+      <main class="grid h-[100dvh] grid-rows-[auto_1fr_auto_auto] gap-4 bg-cyan-950 p-4 text-slate-50">
+        {/* Need to hide overflow as the width of the viewport increases to the diameter of the rotating square image of
+        the fan rotates causing jittery horizontal scroll */}
+        <section class="overflow-hidden">
+          {/* TODO implement animation winddown curve */}
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            height="24"
+            viewBox="0 -960 960 960"
+            width="24"
+            fill="currentColor"
+            style={{ "--rpm": rpm() }}
+            class="h-full w-full animate-[spin_calc(60s/var(--rpm))_linear_infinite] rounded-full fill-cyan-300/30"
+          >
+            <path d="M424-80q-51 0-77.5-30.5T320-180q0-26 11.5-50.5T367-271q22-14 35.5-36t18.5-47l-12-6q-6-3-11-7l-92 33q-17 6-33 10t-33 4q-63 0-111.5-55T80-536q0-51 30.5-77.5T179-640q26 0 51 11.5t41 35.5q14 22 36 35.5t47 18.5l6-12q3-6 7-11l-33-92q-6-17-10-33t-4-32q0-64 55-112.5T536-880q51 0 77.5 30.5T640-781q0 26-11.5 51T593-689q-22 14-35.5 36T539-606l12 6q6 3 11 7l92-34q17-6 32.5-9.5T719-640q81 0 121 67t40 149q0 51-32 77.5T777-320q-25 0-48.5-11.5T689-367q-14-22-36-35.5T606-421l-6 12q-3 6-7 11l33 92q6 16 10 30.5t4 30.5q1 65-54 115T424-80Zm56-340q25 0 42.5-17.5T540-480q0-25-17.5-42.5T480-540q-25 0-42.5 17.5T420-480q0 25 17.5 42.5T480-420Z" />
+          </svg>
+        </section>
+        <section class="mx-auto grid h-min w-max grid-cols-[1fr_auto] grid-rows-2 gap-x-1 text-cyan-300/30">
+          <p class="col-span-2 grid w-full grid-cols-subgrid items-end">
+            <span class="text-end text-5xl font-light">{rpm()}</span>
+            <span class="justify-self-start text-3xl font-normal">rpm</span>
+          </p>
+          <p class="col-span-2 grid w-full grid-cols-subgrid items-end justify-items-end">
+            <span class="text-end text-5xl font-light">{volumeFlow()}</span>
+            <span class="justify-self-start  text-3xl font-normal">
+              m<sup>3</sup>/h
+            </span>
+          </p>
+        </section>
+        <input
+          type="range"
+          min="0"
+          class="range"
+          max={MAX_SET_POINT}
+          value={setPoint() || 0}
+          disabled={isDisabled()}
+          onInput={handleInput}
+          ref={input}
+        />
+        <ModeFanControl setPoint={setPoint} setSetPoint={setSetPoint} />
+      </main>
     </>
   );
 }
