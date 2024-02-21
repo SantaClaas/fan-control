@@ -38,7 +38,7 @@ jobs:
       - name: 👷 Run build
         run: |
           npm ci
-          npm run build
+          npm run build:demo
       - name: 📝 list contents
         run: ls dist/
       # Copy index.html to 404.html to serve the same file when a file is not found. This fixes GitHub Pages routing issues
