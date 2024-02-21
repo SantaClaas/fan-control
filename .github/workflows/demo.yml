@@ -34,6 +34,7 @@ jobs:
         uses: actions/setup-node@v3
         with:
           cache: "npm"
+          cache-dependency-path: ./client/package-lock.json
       - name: 👷 Run build
         run: |
           npm ci
