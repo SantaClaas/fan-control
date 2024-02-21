@@ -362,15 +362,19 @@ function FanControl() {
    * @param {SVGElement} fan
    */
   function animateFan(fan) {
+    /** @type {Keyframe[]} */
     const keyframes = [
       // { transform: "rotate(0deg)" },
       { transform: "rotate(360deg)" },
     ];
 
+    /** @type {KeyframeAnimationOptions} */
     const timing = {
       // A minute to esily set RPM by manipulating the playback rate
       duration: 60_000,
+      playbackRate: rpm(),
       iterations: Infinity,
+      easing: "linear",
     };
 
     const animation = fan.animate(keyframes, timing);
