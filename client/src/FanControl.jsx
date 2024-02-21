@@ -340,6 +340,11 @@ function FanControl() {
   return (
     <>
       <main class="grid h-[100dvh] grid-rows-[auto_1fr_auto_auto] gap-4 bg-cyan-950 p-4 text-slate-50">
+        {isDemo && (
+          <p class="absolute right-0 top-0 -translate-y-1/2 translate-x-1/2 rotate-45 bg-red-600 px-12 pb-1 pt-24 text-2xl">
+            Demo
+          </p>
+        )}
         {/* Need to hide overflow as the width of the viewport increases to the diameter of the rotating square image of
         the fan rotates causing jittery horizontal scroll */}
         <section class="overflow-hidden">
