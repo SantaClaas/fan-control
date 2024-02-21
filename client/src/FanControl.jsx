@@ -263,12 +263,13 @@ function throttle(callback, delayMilliseconds = 250) {
   };
 }
 
+const isDemo = import.meta.env.MODE === "demo";
+
 /**
  * A slider range input based on https://codepen.io/bgebelein/pen/wvYeapy
  * @returns {import("solid-js").JSX.Element}
  */
 function FanControl() {
-  const isDemo = true;
   /**
    * @type {import("solid-js").Signal<number | undefined>}
    */
